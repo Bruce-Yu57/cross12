@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>國中數學：十字交乘法大師</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- KaTeX for Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+
+    <style>
+        body, html {
+            overscroll-behavior: none;
+            touch-action: none; 
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        /* Cross multiplication diagram specific styles */
+        .cross-diagram {
+            display: grid;
+            grid-template-columns: auto auto auto;
+            gap: 0.5rem 1rem;
+            align-items: center;
+            justify-items: center;
+            font-family: 'Times New Roman', serif;
+            font-size: 1.2rem;
+            margin: 1rem 0;
+        }
+        .cross-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background-color: #ef4444; /* red-500 */
+            top: 50%;
+            left: 0;
+            transform-origin: center;
+        }
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        .canvas-bg {
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Helper: GCD ---
+        const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+
+        // --- Helper: Problem Generator ---
+        const generateProblem = (level) => {
+            // Target Equation: Ax^2 + Bx + C = 0
+            // Generated from factors: (ax + b)(cx + d) = 0
+            // A = ac, B = ad + bc, C = bd
+            // Roots: x = -b/a, x = -d/c
+
+            let a, b, c, d;
+
+            // Random helper
+            const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+            const randNonZero = (min, max) => {
+                let val = 0;
+                while (val === 0) val = rand(min, max);
+                return val;
+            };
+
+            if (level === 1) {
+                // Level 1: x^2 + Bx + C = 0
+                // a = 1, c = 1
+                a = 1; 
+                c = 1;
+                // b, d in range [-9, 9] to keep arithmetic simple
+                b = randNonZero(-9, 9);
+                d = randNonZero(-9, 9);
+            } else if (level === 2) {
+                // Level 2: Prime leading coefficient (2, 3, 5, 7)
+                // one of a or c is prime, other is 1
+                const primes = [2, 3, 5]; // 7 gets a bit big for mental math sometimes, keep simple
+                a = primes[rand(0, primes.length - 1)];
+                c = 1;
+                // Avoid factors having common divisors with coefficients if we want irreducible forms
+                // But generally random is fine, just ensure final A, B, C don't have common factor? 
+                // Let's generate and then divide by GCD of (A,B,C) later to look clean.
+                b = randNonZero(-6, 6);
+                d = randNonZero(-6, 6);
+            } else {
+                // Level 3: Composite leading coefficient (4, 6, 8, 9, 10, 12)
+                // a, c both > 1 is likely
+                // e.g. (2x + 1)(2x - 3) -> 4x^2...
+                a = rand(2, 4);
+                c = rand(2, 4);
+                b = randNonZero(-5, 5);
+                d = randNonZero(-5, 5);
+            }
+
+            // Calculate Coefficients
+            let A = a * c;
+            let B = a * d + b * c;
+            let C = b * d;
+
+            // Simplify the equation by dividing by GCD(A, B, C)
+            // This ensures we present "2x^2 + 4x + 2 = 0" as "x^2 + 2x + 1 = 0" usually
+            // BUT for Cross Method practice, sometimes unsimplified is okay, 
+            // but standard textbook problems are usually simplified.
+            const common = Math.abs(gcd(A, gcd(B, C)));
+            A /= common;
+            B /= common;
+            C /= common;
+
+            // Re-calculate effective factors roughly for display steps?
+            // Wait, if we divide by GCD, the original (ax+b)(cx+d) might not match directly without scaling.
+            // Actually, finding the factors of the SIMPLIFIED equation is what matters.
+            // So we need to re-solve the simplified equation to get "displayable" cross terms.
+            // Since we built it from rational roots, they stay the same.
+            // Roots: x1 = -b/a, x2 = -d/c.
+            
+            // Let's verify roots and reconstruct canonical factors for the steps
+            // Root 1: -b/a. Simplified fraction: num1/den1
+            // Root 2: -d/c. Simplified fraction: num2/den2
+            // Canonical factors: (den1*x - num1)(den2*x - num2)
+            
+            const r1Num = -b; const r1Den = a;
+            const r2Num = -d; const r2Den = c;
+
+            // Function to simplify fraction
+            const simplify = (n, d) => {
+                const g = Math.abs(gcd(n, d));
+                return [n/g, d/g];
+            }
+            const [sNum1, sDen1] = simplify(r1Num, r1Den); // Root 1
+            const [sNum2, sDen2] = simplify(r2Num, r2Den); // Root 2
+            
+            // Canonical factors coefficients for display (cross diagram)
+            // Factor 1: (sDen1 * x - sNum1) -> Let's call terms a1, c1
+            // Factor 2: (sDen2 * x - sNum2) -> Let's call terms a2, c2
+            // Note: -sNum1 because factor is (x - root).
+            // Example: root 1/2 -> (2x - 1). a1=2, c1=-1.
+            
+            const a1 = sDen1; 
+            const c1 = -sNum1;
+            const a2 = sDen2;
+            const c2 = -sNum2;
+
+            // However, signs might need adjustment to match B.
+            // (a1*x + c1)(a2*x + c2) = a1a2 x^2 + (a1c2 + a2c1)x + c1c2
+            // Check if this matches A, B, C (or -A, -B, -C).
+            // Usually valid unless we lost a negative sign common factor.
+            // Since A is always positive in generation (a, c > 0), we are good.
+            
+            // Construct Latex
+            const signB = B >= 0 ? '+' : '-';
+            const signC = C >= 0 ? '+' : '-';
+            const strA = A === 1 ? '' : A;
+            const questionLatex = `${strA}x^2 ${signB} ${Math.abs(B)}x ${signC} ${Math.abs(C)} = 0`;
+
+            // Solution Objects
+            const ans1 = { n: sNum1, d: sDen1 };
+            const ans2 = { n: sNum2, d: sDen2 };
+
+            // Steps Construction
+            const steps = [];
+            
+            // Step 1: Identify coefficients
+            steps.push({ 
+                text: "觀察係數：", 
+                math: `A=${A}, \\quad B=${B}, \\quad C=${C}` 
+            });
+
+            // Step 2: Cross Diagram Data
+            // We want to show:
+            //  a1 x       c1
+            //        X
+            //  a2 x       c2
+            // Check: (a1*c2) + (a2*c1) = B
+            const check1 = a1 * c2;
+            const check2 = a2 * c1;
+            
+            steps.push({
+                text: "拆解首項與常數項，尋找十字交乘組合：",
+                type: "cross",
+                data: { a1, a2, c1, c2, check1, check2, B }
+            });
+
+            // Step 3: Factorization
+            const f1Sign = c1 >= 0 ? '+' : '-';
+            const f2Sign = c2 >= 0 ? '+' : '-';
+            const factor1 = `(${a1 === 1 ? '' : a1}x ${f1Sign} ${Math.abs(c1)})`;
+            const factor2 = `(${a2 === 1 ? '' : a2}x ${f2Sign} ${Math.abs(c2)})`;
+            
+            steps.push({
+                text: "寫成因式分解形式：",
+                math: `${factor1}${factor2} = 0`
+            });
+
+            // Step 4: Solve
+            steps.push({
+                text: "令個別因式為 0，求解 x：",
+                math: `${a1 === 1 ? '' : a1}x ${f1Sign} ${Math.abs(c1)} = 0 \\implies x = ${formatFrac(ans1.n, ans1.d)}`
+            });
+            steps.push({
+                text: "",
+                math: `${a2 === 1 ? '' : a2}x ${f2Sign} ${Math.abs(c2)} = 0 \\implies x = ${formatFrac(ans2.n, ans2.d)}`
+            });
+
+            return {
+                level,
+                questionLatex,
+                answers: [ans1, ans2], // Array of {n, d}
+                steps
+            };
+        };
+
+        const formatFrac = (n, d) => {
+            if (d === 1) return `${n}`;
+            if (d === -1) return `${-n}`;
+            // Handle signs: den should be positive usually
+            if (d < 0) { n = -n; d = -d; }
+            return `\\frac{${n}}{${d}}`;
+        };
+
+        // --- Components ---
+        const MathJax = ({ tex, inline = false }) => {
+            const containerRef = useRef(null);
+            useEffect(() => {
+                if (containerRef.current) {
+                    try { katex.render(tex, containerRef.current, { throwOnError: false, displayMode: !inline }); } catch (e) {}
+                }
+            }, [tex, inline]);
+            return <span ref={containerRef} />;
+        };
+
+        const CrossDiagram = ({ data }) => {
+            const { a1, a2, c1, c2, check1, check2, B } = data;
+            return (
+                <div className="flex flex-col items-center my-4 bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
+                    <div className="grid grid-cols-3 gap-x-8 gap-y-2 text-xl font-serif relative">
+                        {/* Top Row */}
+                        <div className="text-right">{a1}x</div>
+                        <div className="text-center text-slate-300"></div>
+                        <div className="text-left">{c1 > 0 ? `+${c1}` : c1}</div>
+
+                        {/* Cross Lines Visual (SVG overlay could be better, but CSS border hack works for simple) */}
+                        <div className="col-span-3 h-16 w-full relative">
+                             <svg width="100%" height="100%" viewBox="0 0 200 60" preserveAspectRatio="none">
+                                <line x1="60" y1="5" x2="140" y2="55" stroke="#ef4444" strokeWidth="2" />
+                                <line x1="60" y1="55" x2="140" y2="5" stroke="#ef4444" strokeWidth="2" />
+                             </svg>
+                        </div>
+
+                        {/* Bottom Row */}
+                        <div className="text-right">{a2}x</div>
+                        <div className="text-center text-slate-300"></div>
+                        <div className="text-left">{c2 > 0 ? `+${c2}` : c2}</div>
+                    </div>
+                    
+                    <div className="mt-4 text-sm text-slate-600 font-mono bg-slate-100 px-3 py-2 rounded">
+                        驗算：({a1}x · {c2}) + ({a2}x · {c1}) = <span className="text-red-600 font-bold">{check1 + check2}x</span>
+                        { (check1 + check2) === B ? <span className="text-green-600 ml-2">✔ (合)</span> : <span className="text-red-600 ml-2">✘</span> }
+                    </div>
+                </div>
+            );
+        };
+
+        const Scratchpad = () => {
+            const canvasRef = useRef(null);
+            const [tool, setTool] = useState('pen'); 
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                const parent = canvas.parentElement;
+                const resizeCanvas = () => {
+                    canvas.width = parent.clientWidth;
+                    canvas.height = parent.clientHeight;
+                };
+                window.addEventListener('resize', resizeCanvas);
+                resizeCanvas();
+                return () => window.removeEventListener('resize', resizeCanvas);
+            }, []);
+
+            const getPos = (e) => {
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return { x: clientX - rect.left, y: clientY - rect.top };
+            };
+
+            const startDraw = (e) => {
+                const { x, y } = getPos(e);
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = tool === 'pen' ? 3 : 20;
+                ctx.strokeStyle = tool === 'pen' ? '#2563eb' : '#f8fafc';
+                ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+            };
+
+            const draw = (e) => {
+                if (e.buttons !== 1) return;
+                const { x, y } = getPos(e);
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            };
+
+            const clearCanvas = () => {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            };
+
+            return (
+                <div className="relative w-full h-full bg-slate-50 canvas-bg overflow-hidden rounded-xl border border-slate-200 shadow-inner">
+                    <canvas
+                        ref={canvasRef}
+                        className="touch-none cursor-crosshair w-full h-full"
+                        onMouseDown={startDraw}
+                        onMouseMove={draw}
+                        onTouchStart={startDraw}
+                        onTouchMove={draw}
+                    />
+                    <div className="absolute top-4 right-4 flex gap-2 bg-white/90 p-2 rounded-lg shadow-md backdrop-blur-sm">
+                        <button onClick={() => setTool('pen')} className={`p-2 rounded-full ${tool === 'pen' ? 'bg-blue-100 text-blue-600' : 'text-slate-500'}`}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                        </button>
+                        <button onClick={() => setTool('eraser')} className={`p-2 rounded-full ${tool === 'eraser' ? 'bg-blue-100 text-blue-600' : 'text-slate-500'}`}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"></path><path d="M22 21H7"></path><path d="m5 11 9 9"></path></svg>
+                        </button>
+                        <button onClick={clearCanvas} className="p-2 rounded-full text-red-500 hover:bg-red-50">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Main App ---
+        const App = () => {
+            const [level, setLevel] = useState(1);
+            const [problem, setProblem] = useState(null);
+            // Inputs: root1 (n1/d1), root2 (n2/d2)
+            const [inputs, setInputs] = useState({ n1: '', d1: '', n2: '', d2: '' });
+            const [status, setStatus] = useState('idle');
+            const [showSteps, setShowSteps] = useState(false);
+
+            useEffect(() => { newProblem(); }, [level]);
+
+            const newProblem = () => {
+                const p = generateProblem(level);
+                setProblem(p);
+                setInputs({ n1: '', d1: '', n2: '', d2: '' });
+                setStatus('idle');
+                setShowSteps(false);
+            };
+
+            const checkAnswer = () => {
+                if (!problem) return;
+                
+                // Parse User Inputs
+                // Treat empty denominator as 1
+                const uN1 = parseInt(inputs.n1) || 0;
+                const uD1 = inputs.d1 === '' ? 1 : (parseInt(inputs.d1) || 1);
+                
+                const uN2 = parseInt(inputs.n2) || 0;
+                const uD2 = inputs.d2 === '' ? 1 : (parseInt(inputs.d2) || 1);
+
+                // Calculate decimal values for comparison (simplest way to check equivalence)
+                // Use small epsilon for float comparison safety, though simple fractions are usually stable
+                const val1 = uN1 / uD1;
+                const val2 = uN2 / uD2;
+
+                const ans1Val = problem.answers[0].n / problem.answers[0].d;
+                const ans2Val = problem.answers[1].n / problem.answers[1].d;
+
+                const epsilon = 0.000001;
+
+                // Check match (order doesn't matter)
+                const match1 = (Math.abs(val1 - ans1Val) < epsilon) && (Math.abs(val2 - ans2Val) < epsilon);
+                const match2 = (Math.abs(val1 - ans2Val) < epsilon) && (Math.abs(val2 - ans1Val) < epsilon);
+
+                if (match1 || match2) {
+                    setStatus('correct');
+                    setShowSteps(true);
+                } else {
+                    setStatus('wrong');
+                }
+            };
+
+            const LevelButton = ({ lv, label, current }) => (
+                <button onClick={() => setLevel(lv)} className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${current === lv ? 'bg-white shadow text-indigo-600 font-bold' : 'text-slate-500 hover:bg-slate-200'}`}>{label}</button>
+            );
+
+            return (
+                <div className="flex flex-row h-screen w-full p-2 md:p-4 gap-4 overflow-hidden safe-area-inset">
+                    {/* Left Panel */}
+                    <div className="flex flex-col w-5/12 h-full bg-white rounded-2xl shadow-lg p-4 md:p-6 overflow-y-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h1 className="text-lg md:text-xl font-bold text-slate-800">十字交乘法</h1>
+                            <div className="flex bg-slate-100 rounded-lg p-1">
+                                <LevelButton lv={1} label="Lv1" current={level} />
+                                <LevelButton lv={2} label="Lv2" current={level} />
+                                <LevelButton lv={3} label="Lv3" current={level} />
+                            </div>
+                        </div>
+
+                        <div className="mb-6 p-6 bg-indigo-50 rounded-xl border border-indigo-100 text-center relative">
+                            <span className="absolute top-2 right-2 bg-indigo-200 text-indigo-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                {level === 1 ? 'a=1' : (level === 2 ? 'a為質數' : 'a為合數')}
+                            </span>
+                            <div className="text-3xl text-indigo-900 font-bold overflow-x-auto py-2 flex justify-center">
+                                {problem && <MathJax tex={problem.questionLatex} />}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 flex flex-col">
+                             <div className="text-sm text-slate-500 text-center mb-2">輸入兩個解 (若是整數，分母留空)</div>
+                            
+                             {/* Input Area: Two Fractions */}
+                             <div className="bg-white rounded-xl mb-4 flex-1 flex flex-col items-center justify-center min-h-[120px] border-2 border-dashed border-slate-100 gap-4 p-4">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xl font-serif italic text-slate-400">x = </span>
+                                    
+                                    {/* Fraction Input 1 */}
+                                    <div className="flex flex-col items-center">
+                                        <input type="number" value={inputs.n1} onChange={(e) => setInputs({...inputs, n1: e.target.value})} className="w-14 md:w-16 h-10 md:h-12 text-center text-xl border-2 border-slate-300 rounded-lg focus:border-blue-500 outline-none bg-slate-50" placeholder="分子" />
+                                        <div className="w-full h-0.5 bg-slate-300 my-1"></div>
+                                        <input type="number" value={inputs.d1} onChange={(e) => setInputs({...inputs, d1: e.target.value})} className="w-14 md:w-16 h-10 md:h-12 text-center text-xl border-2 border-slate-300 rounded-lg focus:border-blue-500 outline-none bg-slate-50" placeholder="1" />
+                                    </div>
+
+                                    <span className="text-xl font-bold text-slate-300">,</span>
+
+                                    {/* Fraction Input 2 */}
+                                    <div className="flex flex-col items-center">
+                                        <input type="number" value={inputs.n2} onChange={(e) => setInputs({...inputs, n2: e.target.value})} className="w-14 md:w-16 h-10 md:h-12 text-center text-xl border-2 border-slate-300 rounded-lg focus:border-blue-500 outline-none bg-slate-50" placeholder="分子" />
+                                        <div className="w-full h-0.5 bg-slate-300 my-1"></div>
+                                        <input type="number" value={inputs.d2} onChange={(e) => setInputs({...inputs, d2: e.target.value})} className="w-14 md:w-16 h-10 md:h-12 text-center text-xl border-2 border-slate-300 rounded-lg focus:border-blue-500 outline-none bg-slate-50" placeholder="1" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {status === 'correct' && <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-lg flex justify-center gap-2 font-bold animate-pulse">答對了！</div>}
+                            {status === 'wrong' && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg flex justify-center gap-2 font-bold">答案不對喔！</div>}
+
+                            <div className="flex gap-3 mt-auto">
+                                <button onClick={checkAnswer} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition-transform">檢查</button>
+                                {status !== 'idle' && <button onClick={newProblem} className="px-5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl">下一題</button>}
+                            </div>
+                            
+                            <div className="mt-4 text-center">
+                                <button onClick={() => setShowSteps(!showSteps)} className="text-xs text-slate-400 underline decoration-dotted">顯示詳解步驟</button>
+                            </div>
+                        </div>
+
+                        {showSteps && problem && (
+                            <div className="mt-6 border-t pt-4">
+                                <div className="space-y-4 text-base">
+                                    {problem.steps.map((step, idx) => (
+                                        <div key={idx} className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                            {step.text && <div className="text-xs text-slate-500 font-bold mb-1">Step {idx + 1} : {step.text}</div>}
+                                            
+                                            {/* Render Cross Diagram if type is cross */}
+                                            {step.type === 'cross' ? (
+                                                <CrossDiagram data={step.data} />
+                                            ) : (
+                                                <div className="text-indigo-800 font-medium overflow-x-auto"><MathJax tex={step.math} /></div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right Panel */}
+                    <div className="flex-1 flex flex-col h-full">
+                        <Scratchpad />
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
